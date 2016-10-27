@@ -91,7 +91,7 @@ def create_problem(dates, community, preferences, weight_power=1.):
 
     slots = len(dates) + len(community)
     if len(names) < slots:
-	logging.warning('There %s slots but only %s cooks' % (slots, len(names)))
+	logging.warning('There are %s slots but only %s cooks' % (slots, len(names)))
 
     prob = LpProblem("Cook Cycle",LpMinimize)
 
