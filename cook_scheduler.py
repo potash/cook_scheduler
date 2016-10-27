@@ -19,6 +19,8 @@ def create_parser():
         help='index of the first preference column in the csv (default=2)')
     parser.add_argument('--end_column', type=int, default=7,
         help='index of the last preference column in the csv (default=7)')
+    parser.add_argument('--weak', action='store_true',
+        help='do not enforce cooks selecting full set of valid preferences')
     parser.add_argument('start', type=pd.Timestamp,
 	help='date to start the cook cycle on  (inclusive)')
     parser.add_argument('end', type=pd.Timestamp,
@@ -47,6 +49,7 @@ def get_preferences(data, dates, begin_end_columns=(2,7)):
         data: date preferences DataFrame. data['Your Name'] contains names
             and preferences are in decreasing order from the third column on
         dates: list of all valid dates
+        begin_end_columns: first and last date columns
     
     Returns: a dictionary of (name, dates) pairs where dates is a list of valid
         dates in decreasing order
@@ -69,7 +72,7 @@ def get_preferences(data, dates, begin_end_columns=(2,7)):
 
     return preferences
 
-def create_problem(dates, community, preferences, weight_power=1.):
+def create_problem(dates, community, preferences, weight_power=1., min_dates=None):
     """
     Create the cook schedule linear programming problem
 
@@ -78,6 +81,8 @@ def create_problem(dates, community, preferences, weight_power=1.):
         community: list of cook cycle dates requring two cooks
         preferences: dictionary of (name, dates) pairs as returned by 
             get_preferences()
+        weight_power: exponent in optimization function
+        min_dates: if not None, pad
     
     Returns: 
 	prob: LpProblem object
@@ -100,6 +105,15 @@ def create_problem(dates, community, preferences, weight_power=1.):
     for name in names:
 	objective += sum(((i+1)**weight_power)*variables[name][d] 
                          for i,d in enumerate(preferences[name]))
+
+        # if cook has fewer than min_dates
+        if len(preferences[name]) < min_dates:
+            c = len(preferences[name])**weight_power
+            # make the next preference all remaining dates
+            for d in dates.difference(preferences[name]):
+                variables[name][d] = LpVariable('%s %s' % (name,d), cat=LpBinary)
+                objective += c*variables[name][d]
+
     prob += objective / float(len(names))
 
     # each person cooks once on their days
@@ -166,8 +180,11 @@ if __name__ == '__main__':
 
     preferences = get_preferences(data, dates, begin_end_columns=btoe)
 
+    min_dates = None if args.weak else btoe[1]-btoe[0]
+    print min_dates
     prob, variables = create_problem(dates, pd.Series(args.community), 
-                                     preferences, weight_power=pref_power)
+                                     preferences, weight_power=pref_power, 
+                                     min_dates=min_dates)
 
     prob.solve()
     print("Status: %s" % LpStatus[prob.status])
